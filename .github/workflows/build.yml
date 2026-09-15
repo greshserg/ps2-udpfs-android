@@ -20,7 +20,9 @@ jobs:
       - name: Prepare launcher icon
         run: |
           mkdir -p app/src/main/res/drawable-nodpi
-          base64 -d app/icon_round_ps2.jpg.b64 > app/src/main/res/drawable-nodpi/ic_launcher_round.jpg
+          tr -d '\r\n \t' < app/icon_round_ps2.jpg.b64 | base64 --decode --ignore-garbage > app/src/main/res/drawable-nodpi/ic_launcher_round.jpg
+          test -s app/src/main/res/drawable-nodpi/ic_launcher_round.jpg
+          file app/src/main/res/drawable-nodpi/ic_launcher_round.jpg
       - name: Build udpfsd for Android ARM64 native dir
         run: |
           git clone --depth 1 https://github.com/pcm720/udpfsd.git /tmp/udpfsd
