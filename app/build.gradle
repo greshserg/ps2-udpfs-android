@@ -1,0 +1,5 @@
+plugins { id 'com.android.application' }
+
+android { namespace 'com.greshserg.ps2udpfs'; compileSdk 35
+    defaultConfig { applicationId 'com.greshserg.ps2udpfs'; minSdk 26; targetSdk 35; versionCode 1; versionName '1.0.0' }
+}
