@@ -17,13 +17,14 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      - name: Build udpfsd for Android ARM64
+      - name: Build udpfsd for Android ARM64 native dir
         run: |
           git clone --depth 1 https://github.com/pcm720/udpfsd.git /tmp/udpfsd
-          mkdir -p "$GITHUB_WORKSPACE/app/src/main/assets"
+          mkdir -p "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a"
           cd /tmp/udpfsd
-          GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -o "$GITHUB_WORKSPACE/app/src/main/assets/udpfsd" ./cmd/udpfsd
-          chmod +x "$GITHUB_WORKSPACE/app/src/main/assets/udpfsd"
+          GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -buildmode=pie -o "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so" ./cmd/udpfsd
+          chmod +x "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so"
+          file "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so"
       - name: Make Gradle wrapper
         run: gradle wrapper --gradle-version 8.9
       - name: Build APK
