@@ -21,42 +21,37 @@ public class MainActivity extends Activity {
     BroadcastReceiver receiver;
     int dp(float v){return (int)(v*getResources().getDisplayMetrics().density+0.5f);}
 
-    @Override public void onCreate(Bundle b){super.onCreate(b); getWindow().setStatusBarColor(Color.rgb(8,67,151)); getWindow().setNavigationBarColor(Color.rgb(5,64,139)); build(); registerStatus();}
-
-    GradientDrawable panel(int alpha,int radius){
-        GradientDrawable g=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{Color.argb(alpha,180,230,255),Color.argb(alpha,28,116,205)});
-        g.setCornerRadius(dp(radius)); g.setStroke(dp(1),Color.argb(190,220,245,255)); return g;
-    }
-    GradientDrawable fieldBg(){GradientDrawable g=new GradientDrawable();g.setColor(Color.argb(75,0,55,130));g.setCornerRadius(dp(8));g.setStroke(dp(1),Color.argb(180,210,240,255));return g;}
-    void styleButton(Button b){b.setTextColor(Color.WHITE);b.setTextSize(16);b.setAllCaps(false);b.setBackground(panel(145,8));b.setPadding(dp(10),dp(8),dp(10),dp(8));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(54));p.setMargins(0,dp(6),0,dp(6));b.setLayoutParams(p);}
-    TextView text(String s,float size){TextView v=new TextView(this);v.setText(s);v.setTextSize(size);v.setTextColor(Color.WHITE);v.setShadowLayer(3,0,1,Color.argb(130,0,45,100));return v;}
+    @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().setStatusBarColor(Color.rgb(4,66,151));getWindow().setNavigationBarColor(Color.rgb(3,76,157));build();registerStatus();}
+    GradientDrawable glass(int alpha,int radius){GradientDrawable g=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{Color.argb(alpha,205,242,255),Color.argb(alpha,24,125,220)});g.setCornerRadius(dp(radius));g.setStroke(dp(1),Color.argb(210,220,248,255));return g;}
+    GradientDrawable fieldBg(){GradientDrawable g=new GradientDrawable();g.setColor(Color.argb(48,0,61,143));g.setCornerRadius(dp(4));g.setStroke(dp(1),Color.argb(205,235,250,255));return g;}
+    void styleButton(Button b){b.setTextColor(Color.WHITE);b.setTextSize(16);b.setAllCaps(false);b.setBackground(glass(120,7));b.setPadding(dp(8),dp(7),dp(8),dp(7));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,dp(54));p.setMargins(0,dp(5),0,dp(5));b.setLayoutParams(p);}
+    TextView text(String s,float size){TextView v=new TextView(this);v.setText(s);v.setTextSize(size);v.setTextColor(Color.WHITE);v.setShadowLayer(3,0,1,Color.argb(150,0,48,110));return v;}
 
     void build(){
         FrameLayout frame=new FrameLayout(this);
-        GradientDrawable sky=new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{Color.rgb(7,67,158),Color.rgb(18,133,219),Color.rgb(75,196,232),Color.rgb(8,101,177)}); frame.setBackground(sky);
-
+        GradientDrawable sky=new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{Color.rgb(4,65,153),Color.rgb(5,114,205),Color.rgb(28,168,231),Color.rgb(4,102,190)});frame.setBackground(sky);
         ScrollView sv=new ScrollView(this);sv.setFillViewport(true);
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);
-        // Safe area for camera cutouts/status bar + comfortable spacing.
-        root.setPadding(dp(16),dp(28),dp(16),dp(28));
+        // About 1 cm of extra top clearance in addition to the status/cutout area.
+        root.setPadding(dp(16),dp(66),dp(16),dp(28));
 
-        TextView title=text("PS2 UDPFS Server — Diagnostics",25);title.setPadding(0,dp(10),0,dp(14));root.addView(title);
-        folder=new EditText(this);folder.setHint("Папка с играми");folder.setHintTextColor(Color.argb(180,255,255,255));folder.setTextColor(Color.WHITE);folder.setTextSize(18);folder.setSingleLine(true);folder.setBackground(fieldBg());folder.setPadding(dp(12),0,dp(12),0);folder.setText(getPreferences(MODE_PRIVATE).getString("game_folder","/storage/emulated/0/PS2/GAMES"));folder.setInputType(InputType.TYPE_CLASS_TEXT);LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(-1,dp(52));fp.setMargins(0,0,0,dp(7));root.addView(folder,fp);
+        TextView orb=text("◯\nPS2",18);orb.setGravity(Gravity.CENTER);orb.setTextColor(Color.rgb(170,220,255));orb.setShadowLayer(10,0,0,Color.CYAN);root.addView(orb,new LinearLayout.LayoutParams(-1,dp(82)));
+        TextView title=text("PS2 UDPFS Server",27);title.setGravity(Gravity.CENTER);title.setLetterSpacing(.04f);title.setPadding(0,dp(2),0,dp(28));root.addView(title);
 
+        folder=new EditText(this);folder.setHint("Папка с играми");folder.setHintTextColor(Color.argb(190,255,255,255));folder.setTextColor(Color.WHITE);folder.setTextSize(18);folder.setSingleLine(true);folder.setBackground(fieldBg());folder.setPadding(dp(12),0,dp(12),0);folder.setText(getPreferences(MODE_PRIVATE).getString("game_folder","/storage/emulated/0/PS2/GAMES"));folder.setInputType(InputType.TYPE_CLASS_TEXT);LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(-1,dp(50));fp.setMargins(0,0,0,dp(6));root.addView(folder,fp);
         Button choose=new Button(this);choose.setText("📁  ВЫБРАТЬ ПАПКУ С ИГРАМИ");choose.setOnClickListener(v->pickFolder());styleButton(choose);root.addView(choose);
         Button access=new Button(this);access.setText("ДАТЬ ДОСТУП КО ВСЕМ ФАЙЛАМ");access.setOnClickListener(v->{try{startActivity(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,Uri.parse("package:"+getPackageName())));}catch(Exception e){startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));}});styleButton(access);root.addView(access);
 
-        status=text("Статус: остановлен",20);status.setPadding(0,dp(12),0,dp(4));root.addView(status);
-        info=text("",16);info.setPadding(0,0,0,dp(8));root.addView(info);refreshInfo();
+        status=text("Статус: остановлен",20);status.setPadding(dp(6),dp(10),0,dp(3));root.addView(status);
+        info=text("",16);info.setPadding(dp(6),0,0,dp(7));root.addView(info);refreshInfo();
         start=new Button(this);start.setText("▶  ЗАПУСТИТЬ СЕРВЕР");start.setOnClickListener(v->startServer());styleButton(start);root.addView(start);
         stop=new Button(this);stop.setText("■  ОСТАНОВИТЬ");stop.setOnClickListener(v->stopServer());styleButton(stop);root.addView(stop);
         check=new Button(this);check.setText("ПРОВЕРИТЬ СЕТЬ");check.setOnClickListener(v->checkNetwork());styleButton(check);root.addView(check);
 
-        TextView lt=text("Диагностика udpfsd:",20);lt.setPadding(0,dp(12),0,dp(5));root.addView(lt);
-        log=text("Нажмите «Запустить сервер»",15);log.setTextIsSelectable(true);log.setPadding(dp(10),dp(10),dp(10),dp(10));log.setBackground(panel(65,8));root.addView(log,new LinearLayout.LayoutParams(-1,-2));
-
-        Space spacer=new Space(this);root.addView(spacer,new LinearLayout.LayoutParams(1,dp(240)));
-        TextView brand=text("PS2  •  UDPFS\nGAMES  •  NETWORK  •  ALWAYS ON",13);brand.setGravity(Gravity.RIGHT);brand.setAlpha(.72f);brand.setPadding(0,dp(12),dp(5),dp(20));root.addView(brand);
+        TextView lt=text("Диагностика udpfsd:",20);lt.setPadding(dp(6),dp(10),0,dp(3));root.addView(lt);
+        log=text("Сервер остановлен",15);log.setTextIsSelectable(true);log.setPadding(dp(8),dp(6),dp(8),dp(10));log.setBackgroundColor(Color.TRANSPARENT);root.addView(log,new LinearLayout.LayoutParams(-1,-2));
+        Space spacer=new Space(this);root.addView(spacer,new LinearLayout.LayoutParams(1,dp(170)));
+        TextView brand=text("PS2  •  UDPFS\nGames  •  Network  •  Always On",13);brand.setGravity(Gravity.RIGHT);brand.setAlpha(.76f);brand.setPadding(0,dp(10),dp(6),dp(20));root.addView(brand);
         sv.addView(root);frame.addView(sv,new FrameLayout.LayoutParams(-1,-1));setContentView(frame);
     }
 
