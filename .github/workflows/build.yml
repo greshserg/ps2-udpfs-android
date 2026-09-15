@@ -17,6 +17,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+      - name: Prepare launcher icon
+        run: |
+          mkdir -p app/src/main/res/drawable-nodpi
+          base64 -d app/icon_round_ps2.jpg.b64 > app/src/main/res/drawable-nodpi/ic_launcher_round.jpg
       - name: Build udpfsd for Android ARM64 native dir
         run: |
           git clone --depth 1 https://github.com/pcm720/udpfsd.git /tmp/udpfsd
