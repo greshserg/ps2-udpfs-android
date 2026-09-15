@@ -55,16 +55,14 @@ public class ServerService extends Service {
             ProcessBuilder pb=new ProcessBuilder(exe.getAbsolutePath(),"-fsroot",root,"-ro","-verbose");
             pb.redirectErrorStream(true);
             process=pb.start();
-            long pid=-1;
-            if(Build.VERSION.SDK_INT>=26) try{pid=process.pid();}catch(Exception ignored){}
-            sendStatus("udpfsd ЗАПУЩЕН\nPID: "+pid+"\nRoot: "+root+"\nDiscovery UDP: 62966");
+            sendStatus("udpfsd ЗАПУЩЕН\nRoot: "+root+"\nDiscovery UDP: 62966");
 
             BufferedReader r=new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line; StringBuilder tail=new StringBuilder();
             while((line=r.readLine())!=null){
                 tail.append(line).append('\n');
                 if(tail.length()>1800)tail.delete(0,tail.length()-1800);
-                sendStatus("udpfsd работает\nPID: "+pid+"\n--- log ---\n"+tail.toString());
+                sendStatus("udpfsd работает\n--- log ---\n"+tail.toString());
             }
             int code=process.waitFor();
             sendStatus("udpfsd ЗАВЕРШИЛСЯ\nКод: "+code+"\n--- log ---\n"+tail.toString());
