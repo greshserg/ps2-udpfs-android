@@ -7,7 +7,8 @@ import java.io.*;
 
 public class ServerService extends Service {
     public static final String ACTION_STATUS="com.greshserg.ps2udpfs.STATUS";
-    java.lang.Process process;
+    volatile java.lang.Process process;
+    volatile boolean stopping=false;
     PowerManager.WakeLock wake;
 
     @Override public void onCreate(){
@@ -23,9 +24,10 @@ public class ServerService extends Service {
     }
 
     @Override public int onStartCommand(Intent intent,int flags,int id){
+        stopping=false;
         String root=intent==null?null:intent.getStringExtra("root");
         new Thread(()->runServer(root)).start();
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
     void sendStatus(String text){
@@ -36,6 +38,7 @@ public class ServerService extends Service {
     }
 
     void runServer(String root){
+        BufferedReader reader=null;
         try{
             sendStatus("Подготовка udpfsd...");
             File exe=new File(getApplicationInfo().nativeLibraryDir,"libudpfsd.so");
@@ -52,24 +55,41 @@ public class ServerService extends Service {
             process=pb.start();
             sendStatus("udpfsd ЗАПУЩЕН\nRoot: "+root+"\nDiscovery UDP: 62966\nBinary: "+exe.getAbsolutePath());
 
-            BufferedReader r=new BufferedReader(new InputStreamReader(process.getInputStream()));
+            reader=new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line; StringBuilder tail=new StringBuilder();
-            while((line=r.readLine())!=null){
+            while(!stopping && (line=reader.readLine())!=null){
                 tail.append(line).append('\n');
                 if(tail.length()>1800)tail.delete(0,tail.length()-1800);
                 sendStatus("udpfsd работает\n--- log ---\n"+tail.toString());
             }
-            int code=process.waitFor();
-            sendStatus("udpfsd ЗАВЕРШИЛСЯ\nКод: "+code+"\n--- log ---\n"+tail.toString());
+            if(!stopping){
+                int code=process.waitFor();
+                sendStatus("udpfsd ЗАВЕРШИЛСЯ\nКод: "+code+"\n--- log ---\n"+tail.toString());
+            }
         }catch(Throwable e){
-            StringWriter sw=new StringWriter();
-            e.printStackTrace(new PrintWriter(sw));
-            sendStatus("ОШИБКА ЗАПУСКА udpfsd\n"+sw.toString());
+            if(!stopping){
+                StringWriter sw=new StringWriter();
+                e.printStackTrace(new PrintWriter(sw));
+                sendStatus("ОШИБКА ЗАПУСКА udpfsd\n"+sw.toString());
+            }
+        }finally{
+            if(reader!=null)try{reader.close();}catch(Exception ignored){}
         }
     }
 
     @Override public void onDestroy(){
-        if(process!=null)process.destroy();
+        stopping=true;
+        java.lang.Process p=process;
+        process=null;
+        if(p!=null){
+            try{p.getInputStream().close();}catch(Exception ignored){}
+            try{p.getErrorStream().close();}catch(Exception ignored){}
+            try{p.getOutputStream().close();}catch(Exception ignored){}
+            try{p.destroy();}catch(Exception ignored){}
+            try{
+                if(Build.VERSION.SDK_INT>=26 && p.isAlive())p.destroyForcibly();
+            }catch(Exception ignored){}
+        }
         if(wake!=null&&wake.isHeld())wake.release();
         sendStatus("Сервер остановлен");
         super.onDestroy();
