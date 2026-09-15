@@ -38,15 +38,10 @@ public class ServerService extends Service {
     void runServer(String root){
         try{
             sendStatus("Подготовка udpfsd...");
-            File exe=new File(getFilesDir(),"udpfsd");
-            if(!exe.exists() || exe.length()==0){
-                try(InputStream in=getAssets().open("udpfsd"); FileOutputStream out=new FileOutputStream(exe)){
-                    byte[] b=new byte[8192]; int n;
-                    while((n=in.read(b))>0)out.write(b,0,n);
-                }
-            }
-            boolean chmod=exe.setExecutable(true,false);
-            sendStatus("udpfsd найден: "+exe.length()+" байт\nExecutable: "+exe.canExecute()+" (chmod="+chmod+")\nПуть: "+exe.getAbsolutePath());
+            File exe=new File(getApplicationInfo().nativeLibraryDir,"libudpfsd.so");
+            sendStatus("udpfsd native: "+exe.getAbsolutePath()+"\nExists: "+exe.exists()+"\nSize: "+exe.length()+" байт\nExecutable: "+exe.canExecute());
+            if(!exe.exists()) throw new IOException("libudpfsd.so не найден в nativeLibraryDir: "+exe.getAbsolutePath());
+            if(!exe.canExecute()) throw new IOException("libudpfsd.so не исполняемый: "+exe.getAbsolutePath());
             if(root==null || root.trim().isEmpty()) throw new IOException("Папка игр не указана");
             File gameRoot=new File(root);
             if(!gameRoot.exists()) throw new IOException("Папка не существует: "+root);
@@ -55,7 +50,7 @@ public class ServerService extends Service {
             ProcessBuilder pb=new ProcessBuilder(exe.getAbsolutePath(),"-fsroot",root,"-ro","-verbose");
             pb.redirectErrorStream(true);
             process=pb.start();
-            sendStatus("udpfsd ЗАПУЩЕН\nRoot: "+root+"\nDiscovery UDP: 62966");
+            sendStatus("udpfsd ЗАПУЩЕН\nRoot: "+root+"\nDiscovery UDP: 62966\nBinary: "+exe.getAbsolutePath());
 
             BufferedReader r=new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line; StringBuilder tail=new StringBuilder();
