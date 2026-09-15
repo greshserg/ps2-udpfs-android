@@ -1,0 +1,33 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Minimal round PS2-inspired icon: dark disc, blue PS2 line mark -->
+    <path
+        android:fillColor="#10121A"
+        android:pathData="M54,4A50,50 0,1 0,54,104A50,50 0,1 0,54,4" />
+    <path
+        android:fillColor="#181C2A"
+        android:pathData="M54,11A43,43 0,1 0,54,97A43,43 0,1 0,54,11" />
+    <path
+        android:strokeColor="#4B75FF"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M24,40 L45,40 Q51,40 51,46 L51,54 Q51,60 45,60 L31,60 Q25,60 25,66 L25,70 L51,70" />
+    <path
+        android:strokeColor="#7898FF"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M57,70 L57,40 L77,40 Q84,40 84,47 L84,53 Q84,60 77,60 L65,60" />
+    <path
+        android:strokeColor="#A6B9FF"
+        android:strokeWidth="3.6"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M62,70 L84,70" />
+</vector>
