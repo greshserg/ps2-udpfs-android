@@ -4,12 +4,14 @@ import android.app.*;
 import android.content.*;
 import android.os.*;
 import java.io.*;
+import java.util.regex.*;
 
 public class ServerService extends Service {
     public static final String ACTION_STATUS="com.greshserg.ps2udpfs.STATUS";
     volatile java.lang.Process process;
     volatile boolean stopping=false;
     PowerManager.WakeLock wake;
+    static final Pattern PEER=Pattern.compile("\\[([0-9]{1,3}(?:\\.[0-9]{1,3}){3})(?::[0-9]+)?\\]");
 
     @Override public void onCreate(){
         super.onCreate();
@@ -37,6 +39,16 @@ public class ServerService extends Service {
         sendBroadcast(i);
     }
 
+    void sendPeerActivity(String line){
+        Matcher m=PEER.matcher(line);
+        if(!m.find())return;
+        Intent i=new Intent(ACTION_STATUS);
+        i.setPackage(getPackageName());
+        i.putExtra("peer_activity",true);
+        i.putExtra("peer_ip",m.group(1));
+        sendBroadcast(i);
+    }
+
     void runServer(String root){
         BufferedReader reader=null;
         try{
@@ -60,6 +72,7 @@ public class ServerService extends Service {
             while(!stopping && (line=reader.readLine())!=null){
                 tail.append(line).append('\n');
                 if(tail.length()>1800)tail.delete(0,tail.length()-1800);
+                sendPeerActivity(line);
                 sendStatus("udpfsd работает\n--- log ---\n"+tail.toString());
             }
             if(!stopping){
@@ -86,9 +99,7 @@ public class ServerService extends Service {
             try{p.getErrorStream().close();}catch(Exception ignored){}
             try{p.getOutputStream().close();}catch(Exception ignored){}
             try{p.destroy();}catch(Exception ignored){}
-            try{
-                if(Build.VERSION.SDK_INT>=26 && p.isAlive())p.destroyForcibly();
-            }catch(Exception ignored){}
+            try{if(Build.VERSION.SDK_INT>=26 && p.isAlive())p.destroyForcibly();}catch(Exception ignored){}
         }
         if(wake!=null&&wake.isHeld())wake.release();
         sendStatus("Сервер остановлен");
