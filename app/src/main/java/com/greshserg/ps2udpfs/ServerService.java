@@ -6,7 +6,7 @@ import android.os.*;
 import java.io.*;
 
 public class ServerService extends Service {
-    Process process; PowerManager.WakeLock wake;
+    java.lang.Process process; PowerManager.WakeLock wake;
     @Override public void onCreate(){super.onCreate();
         String ch="ps2_udpfs"; if(Build.VERSION.SDK_INT>=26)((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(new NotificationChannel(ch,"PS2 UDPFS",NotificationManager.IMPORTANCE_LOW));
         Notification.Builder n=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,ch):new Notification.Builder(this); n.setContentTitle("PS2 UDPFS Server").setContentText("Сервер работает").setSmallIcon(android.R.drawable.stat_sys_upload); startForeground(1001,n.build());
