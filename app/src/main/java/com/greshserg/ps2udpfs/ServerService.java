@@ -2,108 +2,383 @@ package com.greshserg.ps2udpfs;
 
 import android.app.*;
 import android.content.*;
+import android.net.*;
+import android.net.wifi.WifiManager;
 import android.os.*;
+
 import java.io.*;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.util.concurrent.*;
 import java.util.regex.*;
 
 public class ServerService extends Service {
-    public static final String ACTION_STATUS="com.greshserg.ps2udpfs.STATUS";
-    volatile java.lang.Process process;
-    volatile boolean stopping=false;
-    PowerManager.WakeLock wake;
-    static final Pattern PEER=Pattern.compile("\\[([0-9]{1,3}(?:\\.[0-9]{1,3}){3})(?::[0-9]+)?\\]");
+    public static final String ACTION_STATUS = "com.greshserg.ps2udpfs.STATUS";
+    public static final String ACTION_START = "com.greshserg.ps2udpfs.START";
+    public static final String ACTION_STOP = "com.greshserg.ps2udpfs.STOP";
 
-    @Override public void onCreate(){
+    private static final String PREFS = "udpfs_service_state";
+    private static final String PREF_ENABLED = "enabled";
+    private static final String PREF_ROOT = "root";
+    private static final String CHANNEL_ID = "ps2_udpfs";
+    private static final int NOTIFICATION_ID = 1001;
+
+    private enum State { STOPPED, STARTING, RUNNING, STOPPING, FAILED }
+
+    private final Object stateLock = new Object();
+    private ExecutorService commands;
+    private volatile java.lang.Process process;
+    private volatile State state = State.STOPPED;
+    private volatile boolean desiredRunning = false;
+    private volatile boolean destroyed = false;
+    private volatile String activeRoot = "";
+    private volatile String boundIp = "";
+    private volatile long generation = 0;
+    private int restartBudget = 1;
+
+    private PowerManager.WakeLock wakeLock;
+    private WifiManager.MulticastLock multicastLock;
+
+    private static final Pattern PEER = Pattern.compile("\\[((?:\\d{1,3}\\.){3}\\d{1,3})(?::\\d+)?\\]");
+
+    @Override public void onCreate() {
         super.onCreate();
-        String ch="ps2_udpfs";
-        if(Build.VERSION.SDK_INT>=26)((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(new NotificationChannel(ch,"PS2 UDPFS",NotificationManager.IMPORTANCE_LOW));
-        Notification.Builder n=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,ch):new Notification.Builder(this);
-        n.setContentTitle("PS2 UDPFS Server").setContentText("Запуск udpfsd...").setSmallIcon(android.R.drawable.stat_sys_upload);
-        startForeground(1001,n.build());
-        PowerManager pm=(PowerManager)getSystemService(POWER_SERVICE);
-        wake=pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"PS2Udpfs:Server");
-        wake.acquire();
+        commands = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "udpfs-control");
+            t.setDaemon(true);
+            return t;
+        });
+
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationManager nm = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
+            nm.createNotificationChannel(new NotificationChannel(CHANNEL_ID, "PS2 UDPFS", NotificationManager.IMPORTANCE_LOW));
+        }
+        startForeground(NOTIFICATION_ID, buildNotification("Подготовка сервера..."));
+
+        PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PS2Udpfs:Server");
+        wakeLock.setReferenceCounted(false);
+
+        WifiManager wifi = (WifiManager)getApplicationContext().getSystemService(WIFI_SERVICE);
+        if (wifi != null) {
+            multicastLock = wifi.createMulticastLock("PS2Udpfs:Discovery");
+            multicastLock.setReferenceCounted(false);
+        }
     }
 
-    @Override public int onStartCommand(Intent intent,int flags,int id){
-        stopping=false;
-        String root=intent==null?null:intent.getStringExtra("root");
-        new Thread(()->runServer(root)).start();
-        return START_NOT_STICKY;
+    @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        final SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        final String action = intent == null ? null : intent.getAction();
+
+        if (ACTION_STOP.equals(action)) {
+            desiredRunning = false;
+            prefs.edit().putBoolean(PREF_ENABLED, false).apply();
+            submitCommand(() -> {
+                stopProcessInternal(true);
+                stopSelfResult(startId);
+            });
+            return START_STICKY;
+        }
+
+        String root = intent == null ? null : intent.getStringExtra("root");
+        boolean explicitStart = ACTION_START.equals(action) || (intent != null && root != null);
+
+        if (explicitStart) {
+            if (root != null && !root.trim().isEmpty()) {
+                root = root.trim();
+                prefs.edit().putString(PREF_ROOT, root).putBoolean(PREF_ENABLED, true).apply();
+            }
+            desiredRunning = true;
+            restartBudget = 1;
+        } else {
+            desiredRunning = prefs.getBoolean(PREF_ENABLED, false);
+        }
+
+        if (root == null || root.trim().isEmpty()) root = prefs.getString(PREF_ROOT, "");
+        final String requestedRoot = root == null ? "" : root.trim();
+
+        if (desiredRunning && !requestedRoot.isEmpty()) {
+            submitCommand(() -> startProcessInternal(requestedRoot, explicitStart));
+        } else if (!desiredRunning) {
+            submitCommand(() -> {
+                stopProcessInternal(true);
+                stopSelfResult(startId);
+            });
+        } else {
+            sendStatus("ОШИБКА ЗАПУСКА udpfsd\nПапка игр не указана");
+        }
+        return START_STICKY;
     }
 
-    void sendStatus(String text){
-        Intent i=new Intent(ACTION_STATUS);
-        i.setPackage(getPackageName());
-        i.putExtra("text",text);
-        sendBroadcast(i);
+    private void submitCommand(Runnable r) {
+        ExecutorService e = commands;
+        if (destroyed || e == null || e.isShutdown()) return;
+        try { e.execute(r); } catch (RejectedExecutionException ignored) {}
     }
 
-    void sendPeerActivity(String line){
-        Matcher m=PEER.matcher(line);
-        if(!m.find())return;
-        Intent i=new Intent(ACTION_STATUS);
-        i.setPackage(getPackageName());
-        i.putExtra("peer_activity",true);
-        i.putExtra("peer_ip",m.group(1));
-        sendBroadcast(i);
+    private Notification buildNotification(String text) {
+        Notification.Builder n = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CHANNEL_ID) : new Notification.Builder(this);
+        return n.setContentTitle("PS2 UDPFS Server")
+                .setContentText(text)
+                .setSmallIcon(android.R.drawable.stat_sys_upload)
+                .setOngoing(true)
+                .build();
     }
 
-    void runServer(String root){
-        BufferedReader reader=null;
-        try{
-            sendStatus("Подготовка udpfsd...");
-            File exe=new File(getApplicationInfo().nativeLibraryDir,"libudpfsd.so");
-            sendStatus("udpfsd native: "+exe.getAbsolutePath()+"\nExists: "+exe.exists()+"\nSize: "+exe.length()+" байт\nExecutable: "+exe.canExecute());
-            if(!exe.exists()) throw new IOException("libudpfsd.so не найден в nativeLibraryDir: "+exe.getAbsolutePath());
-            if(!exe.canExecute()) throw new IOException("libudpfsd.so не исполняемый: "+exe.getAbsolutePath());
-            if(root==null || root.trim().isEmpty()) throw new IOException("Папка игр не указана");
-            File gameRoot=new File(root);
-            if(!gameRoot.exists()) throw new IOException("Папка не существует: "+root);
-            if(!gameRoot.isDirectory()) throw new IOException("Это не папка: "+root);
+    private void updateNotification(String text) {
+        NotificationManager nm = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
+        nm.notify(NOTIFICATION_ID, buildNotification(text));
+    }
 
-            ProcessBuilder pb=new ProcessBuilder(exe.getAbsolutePath(),"-fsroot",root,"-ro","-verbose");
+    private void acquireRuntimeLocks() throws IOException {
+        try {
+            if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
+        } catch (Throwable e) {
+            throw new IOException("Не удалось получить WakeLock", e);
+        }
+        try {
+            if (multicastLock != null && !multicastLock.isHeld()) multicastLock.acquire();
+        } catch (Throwable e) {
+            releaseRuntimeLocks();
+            throw new IOException("Не удалось получить Wi-Fi MulticastLock", e);
+        }
+    }
+
+    private void releaseRuntimeLocks() {
+        try { if (multicastLock != null && multicastLock.isHeld()) multicastLock.release(); } catch (Throwable ignored) {}
+        try { if (wakeLock != null && wakeLock.isHeld()) wakeLock.release(); } catch (Throwable ignored) {}
+    }
+
+    private String findWifiIpv4() throws IOException {
+        ConnectivityManager cm = (ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
+        if (cm == null) throw new IOException("ConnectivityManager недоступен");
+
+        Network active = cm.getActiveNetwork();
+        String ip = ipv4ForWifiNetwork(cm, active);
+        if (ip != null) return ip;
+
+        for (Network network : cm.getAllNetworks()) {
+            ip = ipv4ForWifiNetwork(cm, network);
+            if (ip != null) return ip;
+        }
+        throw new IOException("IPv4 Wi-Fi не найден. Подключите телефон к Wi-Fi роутера.");
+    }
+
+    private String ipv4ForWifiNetwork(ConnectivityManager cm, Network network) {
+        if (network == null) return null;
+        NetworkCapabilities caps = cm.getNetworkCapabilities(network);
+        if (caps == null || !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return null;
+        LinkProperties lp = cm.getLinkProperties(network);
+        if (lp == null) return null;
+        for (LinkAddress la : lp.getLinkAddresses()) {
+            InetAddress addr = la.getAddress();
+            if (addr instanceof Inet4Address && !addr.isLoopbackAddress() && !addr.isLinkLocalAddress()) {
+                return addr.getHostAddress();
+            }
+        }
+        return null;
+    }
+
+    private void startProcessInternal(String root, boolean userRequested) {
+        if (destroyed || !desiredRunning) return;
+
+        java.lang.Process current = process;
+        if (current != null && current.isAlive()) {
+            if (root.equals(activeRoot)) {
+                sendStatus("udpfsd уже работает\nRoot: " + activeRoot + "\nBind: " + boundIp + "\nDiscovery UDP: 62966");
+                return;
+            }
+            stopProcessInternal(false);
+        }
+
+        state = State.STARTING;
+        sendStatus("Подготовка udpfsd...");
+
+        try {
+            File exe = new File(getApplicationInfo().nativeLibraryDir, "libudpfsd.so");
+            if (!exe.exists()) throw new IOException("libudpfsd.so не найден: " + exe.getAbsolutePath());
+            if (!exe.canExecute()) throw new IOException("libudpfsd.so не исполняемый: " + exe.getAbsolutePath());
+            if (root == null || root.trim().isEmpty()) throw new IOException("Папка игр не указана");
+
+            File gameRoot = new File(root);
+            if (!gameRoot.exists()) throw new IOException("Папка не существует: " + root);
+            if (!gameRoot.isDirectory()) throw new IOException("Это не папка: " + root);
+
+            String wifiIp = findWifiIpv4();
+            acquireRuntimeLocks();
+
+            ProcessBuilder pb = new ProcessBuilder(
+                    exe.getAbsolutePath(),
+                    "-fsroot", root,
+                    "-ro",
+                    "-verbose",
+                    "-bind", wifiIp
+            );
             pb.redirectErrorStream(true);
-            process=pb.start();
-            sendStatus("udpfsd ЗАПУЩЕН\nRoot: "+root+"\nDiscovery UDP: 62966\nBinary: "+exe.getAbsolutePath());
 
-            reader=new BufferedReader(new InputStreamReader(process.getInputStream()));
-            String line; StringBuilder tail=new StringBuilder();
-            while(!stopping && (line=reader.readLine())!=null){
-                tail.append(line).append('\n');
-                if(tail.length()>1800)tail.delete(0,tail.length()-1800);
-                sendPeerActivity(line);
-                sendStatus("udpfsd работает\n--- log ---\n"+tail.toString());
+            java.lang.Process p = pb.start();
+            long gen;
+            synchronized (stateLock) {
+                process = p;
+                activeRoot = root;
+                boundIp = wifiIp;
+                generation++;
+                gen = generation;
+                state = State.RUNNING;
             }
-            if(!stopping){
-                int code=process.waitFor();
-                sendStatus("udpfsd ЗАВЕРШИЛСЯ\nКод: "+code+"\n--- log ---\n"+tail.toString());
-            }
-        }catch(Throwable e){
-            if(!stopping){
-                StringWriter sw=new StringWriter();
+
+            updateNotification("Работает • " + wifiIp + ":62966");
+            sendStatus("udpfsd ЗАПУЩЕН\nRoot: " + root + "\nBind: " + wifiIp + "\nDiscovery UDP: 62966\nMulticastLock: " + (multicastLock != null && multicastLock.isHeld()));
+
+            Thread logThread = new Thread(() -> readProcessLog(p, gen), "udpfs-log-" + gen);
+            logThread.setDaemon(true);
+            logThread.start();
+
+            Thread exitThread = new Thread(() -> awaitProcessExit(p, gen), "udpfs-exit-" + gen);
+            exitThread.setDaemon(true);
+            exitThread.start();
+        } catch (Throwable e) {
+            state = State.FAILED;
+            releaseRuntimeLocks();
+            if (!destroyed) {
+                StringWriter sw = new StringWriter();
                 e.printStackTrace(new PrintWriter(sw));
-                sendStatus("ОШИБКА ЗАПУСКА udpfsd\n"+sw.toString());
+                sendStatus("ОШИБКА ЗАПУСКА udpfsd\n" + sw.toString());
+                updateNotification("Ошибка запуска");
             }
-        }finally{
-            if(reader!=null)try{reader.close();}catch(Exception ignored){}
         }
     }
 
-    @Override public void onDestroy(){
-        stopping=true;
-        java.lang.Process p=process;
-        process=null;
-        if(p!=null){
-            try{p.getInputStream().close();}catch(Exception ignored){}
-            try{p.getErrorStream().close();}catch(Exception ignored){}
-            try{p.getOutputStream().close();}catch(Exception ignored){}
-            try{p.destroy();}catch(Exception ignored){}
-            try{if(Build.VERSION.SDK_INT>=26 && p.isAlive())p.destroyForcibly();}catch(Exception ignored){}
+    private boolean isCurrent(java.lang.Process p, long gen) {
+        return process == p && generation == gen;
+    }
+
+    private void readProcessLog(java.lang.Process p, long gen) {
+        StringBuilder tail = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!isCurrent(p, gen)) break;
+                tail.append(line).append('\n');
+                if (tail.length() > 5000) tail.delete(0, tail.length() - 5000);
+                sendPeerActivity(line);
+                sendStatus("udpfsd работает\nBind: " + boundIp + "\n--- log ---\n" + tail.toString());
+            }
+        } catch (IOException e) {
+            if (isCurrent(p, gen) && state != State.STOPPING) {
+                sendStatus("udpfsd: ошибка чтения лога\n" + e);
+            }
         }
-        if(wake!=null&&wake.isHeld())wake.release();
+    }
+
+    private void awaitProcessExit(java.lang.Process p, long gen) {
+        int code;
+        try {
+            code = p.waitFor();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+        final int exitCode = code;
+        submitCommand(() -> handleProcessExit(p, gen, exitCode));
+    }
+
+    private void handleProcessExit(java.lang.Process p, long gen, int code) {
+        if (!isCurrent(p, gen)) return;
+
+        synchronized (stateLock) {
+            process = null;
+            state = State.STOPPED;
+        }
+        releaseRuntimeLocks();
+
+        if (!desiredRunning || destroyed) return;
+
+        if (restartBudget > 0) {
+            restartBudget--;
+            sendStatus("udpfsd неожиданно завершился\nКод: " + code + "\nПовторный запуск через 1 сек...");
+            try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
+            startProcessInternal(activeRoot, false);
+        } else {
+            state = State.FAILED;
+            sendStatus("udpfsd ЗАВЕРШИЛСЯ\nКод: " + code + "\nАвтоперезапуск уже использован. Нажмите Запустить сервер.");
+            updateNotification("Сервер остановлен с ошибкой");
+        }
+    }
+
+    private void stopProcessInternal(boolean releaseLocks) {
+        java.lang.Process p = process;
+        if (p == null) {
+            state = State.STOPPED;
+            if (releaseLocks) releaseRuntimeLocks();
+            return;
+        }
+
+        state = State.STOPPING;
+        sendStatus("Останавливаю udpfsd...");
+        try { p.destroy(); } catch (Throwable ignored) {}
+
+        try {
+            if (!p.waitFor(2000, TimeUnit.MILLISECONDS)) {
+                try { p.destroyForcibly(); } catch (Throwable ignored) {}
+                try { p.waitFor(1000, TimeUnit.MILLISECONDS); } catch (Throwable ignored) {}
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            try { p.destroyForcibly(); } catch (Throwable ignored) {}
+        }
+
+        try { p.getInputStream().close(); } catch (Exception ignored) {}
+        try { p.getErrorStream().close(); } catch (Exception ignored) {}
+        try { p.getOutputStream().close(); } catch (Exception ignored) {}
+
+        synchronized (stateLock) {
+            if (process == p) process = null;
+            state = State.STOPPED;
+            generation++;
+        }
+        activeRoot = "";
+        boundIp = "";
+        if (releaseLocks) releaseRuntimeLocks();
+        updateNotification("Сервер остановлен");
         sendStatus("Сервер остановлен");
+    }
+
+    private void sendStatus(String text) {
+        Intent i = new Intent(ACTION_STATUS);
+        i.setPackage(getPackageName());
+        i.putExtra("text", text);
+        sendBroadcast(i);
+    }
+
+    private void sendPeerActivity(String line) {
+        Matcher m = PEER.matcher(line);
+        if (!m.find()) return;
+        Intent i = new Intent(ACTION_STATUS);
+        i.setPackage(getPackageName());
+        i.putExtra("peer_activity", true);
+        i.putExtra("peer_ip", m.group(1));
+        sendBroadcast(i);
+    }
+
+    @Override public void onDestroy() {
+        destroyed = true;
+        CountDownLatch latch = new CountDownLatch(1);
+        ExecutorService e = commands;
+        if (e != null && !e.isShutdown()) {
+            try {
+                e.execute(() -> {
+                    try { stopProcessInternal(true); }
+                    finally { latch.countDown(); }
+                });
+                latch.await(2500, TimeUnit.MILLISECONDS);
+            } catch (Throwable ignored) {}
+            e.shutdownNow();
+        } else {
+            releaseRuntimeLocks();
+        }
         super.onDestroy();
     }
-    @Override public android.os.IBinder onBind(Intent i){return null;}
+
+    @Override public android.os.IBinder onBind(Intent i) { return null; }
 }
