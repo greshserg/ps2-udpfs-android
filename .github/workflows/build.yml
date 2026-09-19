@@ -35,7 +35,7 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a"
           cd /tmp/udpfsd
           SHORT_SHA="${UDPFSD_COMMIT:0:12}"
-          go test ./...
+          CGO_ENABLED=0 go test ./...
           GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -buildmode=pie -ldflags "-X main.Version=$SHORT_SHA-android-wifi-250ms" -o "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so" ./cmd/udpfsd
           chmod +x "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so"
           file "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so"
