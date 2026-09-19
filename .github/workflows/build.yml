@@ -29,15 +29,12 @@ jobs:
           git -C /tmp/udpfsd remote add origin https://github.com/pcm720/udpfsd.git
           git -C /tmp/udpfsd fetch --depth 1 origin "$UDPFSD_COMMIT"
           git -C /tmp/udpfsd checkout --detach FETCH_HEAD
-          git -C /tmp/udpfsd apply --check "$GITHUB_WORKSPACE/patches/udpfsd-android-wifi.patch"
-          git -C /tmp/udpfsd apply "$GITHUB_WORKSPACE/patches/udpfsd-android-wifi.patch"
-          cp "$GITHUB_WORKSPACE/patches/retransmit_regression_test.go" /tmp/udpfsd/udprdma/
           mkdir -p "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a"
           cd /tmp/udpfsd
+          test "$(git rev-parse HEAD)" = "$UDPFSD_COMMIT"
+          test -z "$(git status --porcelain)"
           SHORT_SHA="${UDPFSD_COMMIT:0:12}"
-          # CHD upstream tests require libchdr; exercise the patched transport here.
-          CGO_ENABLED=0 go test -v ./udprdma
-          GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -buildmode=pie -ldflags "-X main.Version=$SHORT_SHA-android-wifi-250ms" -o "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so" ./cmd/udpfsd
+          GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -buildmode=pie -ldflags "-X main.Version=$SHORT_SHA" -o "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so" ./cmd/udpfsd
           chmod +x "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so"
           file "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so"
       - name: Make Gradle wrapper
