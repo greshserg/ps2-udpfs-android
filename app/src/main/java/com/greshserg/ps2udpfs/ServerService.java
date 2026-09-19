@@ -38,6 +38,7 @@ public class ServerService extends Service {
 
     private PowerManager.WakeLock wakeLock;
     private WifiManager.MulticastLock multicastLock;
+    private WifiManager.WifiLock wifiLock;
 
     private static final Pattern PEER = Pattern.compile("\\[((?:\\d{1,3}\\.){3}\\d{1,3})(?::\\d+)?\\]");
 
@@ -61,6 +62,13 @@ public class ServerService extends Service {
 
         WifiManager wifi = (WifiManager)getApplicationContext().getSystemService(WIFI_SERVICE);
         if (wifi != null) {
+            // API 34 replaces HIGH_PERF with LOW_LATENCY; the latter requires
+            // a visible app and screen on. isHeld() does not prove radio activation.
+            int mode = Build.VERSION.SDK_INT >= 34
+                    ? WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+                    : WifiManager.WIFI_MODE_FULL_HIGH_PERF;
+            wifiLock = wifi.createWifiLock(mode, "PS2Udpfs:Streaming");
+            wifiLock.setReferenceCounted(false);
             multicastLock = wifi.createMulticastLock("PS2Udpfs:Discovery");
             multicastLock.setReferenceCounted(false);
         }
@@ -137,6 +145,13 @@ public class ServerService extends Service {
             throw new IOException("Не удалось получить WakeLock", e);
         }
         try {
+            if (wifiLock == null) throw new IOException("Wi-Fi Lock недоступен");
+            if (!wifiLock.isHeld()) wifiLock.acquire();
+        } catch (Exception e) {
+            releaseRuntimeLocks();
+            throw new IOException("Не удалось получить Wi-Fi Lock", e);
+        }
+        try {
             if (multicastLock != null && !multicastLock.isHeld()) multicastLock.acquire();
         } catch (Throwable e) {
             releaseRuntimeLocks();
@@ -145,8 +160,30 @@ public class ServerService extends Service {
     }
 
     private void releaseRuntimeLocks() {
+        try { if (wifiLock != null && wifiLock.isHeld()) wifiLock.release(); } catch (Exception ignored) {}
         try { if (multicastLock != null && multicastLock.isHeld()) multicastLock.release(); } catch (Throwable ignored) {}
         try { if (wakeLock != null && wakeLock.isHeld()) wakeLock.release(); } catch (Throwable ignored) {}
+    }
+
+    private String powerStatus() {
+        PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);
+        String info = "\nWakeLock: " + (wakeLock != null && wakeLock.isHeld())
+                + "\nWi-Fi Lock held: " + (wifiLock != null && wifiLock.isHeld())
+                + " (" + (Build.VERSION.SDK_INT >= 34 ? "LOW_LATENCY" : "HIGH_PERF") + ")";
+        if (pm != null) {
+            info += "\nЭкран включён: " + pm.isInteractive()
+                    + "\nЭнергосбережение: " + pm.isPowerSaveMode();
+            if (Build.VERSION.SDK_INT >= 23) {
+                info += "\nDoze: " + pm.isDeviceIdleMode()
+                        + "\nИсключение оптимизации батареи: "
+                        + pm.isIgnoringBatteryOptimizations(getPackageName());
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 34) {
+            info += "\nWi-Fi LOW_LATENCY: нужны включённый экран и открытое приложение;"
+                    + " held не подтверждает активность режима.";
+        }
+        return info;
     }
 
     private String findWifiIpv4() throws IOException {
@@ -228,7 +265,7 @@ public class ServerService extends Service {
             }
 
             updateNotification("Работает • " + wifiIp + ":62966");
-            sendStatus("udpfsd ЗАПУЩЕН\nRoot: " + root + "\nBind: " + wifiIp + "\nDiscovery UDP: 62966\nMulticastLock: " + (multicastLock != null && multicastLock.isHeld()));
+            sendStatus("udpfsd ЗАПУЩЕН\nRoot: " + root + "\nBind: " + wifiIp + "\nDiscovery UDP: 62966\nMulticastLock: " + (multicastLock != null && multicastLock.isHeld()) + powerStatus());
 
             Thread logThread = new Thread(() -> readProcessLog(p, gen), "udpfs-log-" + gen);
             logThread.setDaemon(true);
@@ -262,7 +299,7 @@ public class ServerService extends Service {
                 tail.append(line).append('\n');
                 if (tail.length() > 5000) tail.delete(0, tail.length() - 5000);
                 sendPeerActivity(line);
-                sendStatus("udpfsd работает\nBind: " + boundIp + "\n--- log ---\n" + tail.toString());
+                sendStatus("udpfsd работает\nBind: " + boundIp + powerStatus() + "\n--- log ---\n" + tail.toString());
             }
         } catch (IOException e) {
             if (isCurrent(p, gen) && state != State.STOPPING) {
