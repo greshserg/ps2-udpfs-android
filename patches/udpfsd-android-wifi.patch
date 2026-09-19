@@ -1,0 +1,13 @@
+diff --git a/udprdma/protocol.go b/udprdma/protocol.go
+index 6f7086e..3df8fb7 100644
+--- a/udprdma/protocol.go
++++ b/udprdma/protocol.go
+@@ -25,7 +25,7 @@ const (
+ 	SendWindow       = 8                      // Max unacked packets in flight
+ 	MaxDataPayload   = 1408                   // Max UDPRDMA data payload per packet
+ 	FinAckTimeout    = 500 * time.Millisecond // FIN ACK timeout
+-	WindowAckTimeout = 100 * time.Millisecond // Mid-transfer window ACK timeout
++	WindowAckTimeout = 250 * time.Millisecond // Mid-transfer window ACK timeout
+ 	MaxRetransmits   = 4                      // Max retransmit attempts
+ )
+ 
