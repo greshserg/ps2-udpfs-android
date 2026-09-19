@@ -49,6 +49,7 @@ public class MainActivity extends Activity {
         start=new Button(this);start.setText("▶  ЗАПУСТИТЬ СЕРВЕР");start.setOnClickListener(v->startServer());styleButton(start);root.addView(start);
         stop=new Button(this);stop.setText("■  ОСТАНОВИТЬ");stop.setOnClickListener(v->stopServer());styleButton(stop);root.addView(stop);
         logs=new Button(this);logs.setText("ЛОГИ");logs.setOnClickListener(v->showLogs());styleButton(logs);root.addView(logs);
+        Button share=new Button(this);share.setText("Поделиться логом");share.setOnClickListener(v->shareLog());styleButton(share);root.addView(share);
         updateButtons();
         Space spacer=new Space(this);root.addView(spacer,new LinearLayout.LayoutParams(1,dp(170)));
         TextView brand=text("PS2  •  UDPFS\nGames  •  Network  •  Always On",13);brand.setGravity(Gravity.RIGHT);brand.setAlpha(.58f);brand.setPadding(0,dp(10),dp(6),dp(20));root.addView(brand);
@@ -67,5 +68,27 @@ public class MainActivity extends Activity {
     void startServer(){stopRequested=false;resetPeer();String p=folder.getText().toString().trim();if(!p.startsWith("/")){Toast.makeText(this,"Сначала выберите папку кнопкой 📁",Toast.LENGTH_LONG).show();return;}getPreferences(MODE_PRIVATE).edit().putString("game_folder",p).apply();refreshInfo();latestLog="Запускаю...";Intent i=new Intent(this,ServerService.class);i.setAction(ServerService.ACTION_START);i.putExtra("root",p);if(Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);status.setText("Статус: запуск...");start.setEnabled(false);stop.setEnabled(true);}
     void stopServer(){if(stopRequested||!serverRunning)return;stopRequested=true;resetPeer();status.setText("Статус: остановка...");latestLog="Останавливаю сервер...";updateButtons();Intent i=new Intent(this,ServerService.class);i.setAction(ServerService.ACTION_STOP);startService(i);}
     void updateButtons(){if(start==null||stop==null)return;start.setEnabled(!serverRunning&&!stopRequested);stop.setEnabled(serverRunning&&!stopRequested);}
+    void shareLog() {
+        Toast.makeText(this,"Подготовка файла лога...",Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                File file=LogStore.snapshot(getApplicationContext());
+                runOnUiThread(() -> {
+                    if(isFinishing() || isDestroyed()) return;
+                    try {
+                        Uri uri=androidx.core.content.FileProvider.getUriForFile(this,getPackageName()+".logs",file);
+                        Intent share=new Intent(Intent.ACTION_SEND);
+                        share.setType("text/plain");
+                        share.putExtra(Intent.EXTRA_STREAM,uri);
+                        share.setClipData(ClipData.newRawUri("Лог UDPFS",uri));
+                        share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        startActivity(Intent.createChooser(share,"Поделиться логом"));
+                    } catch(Exception e) { Toast.makeText(this,"Не удалось отправить лог: "+e.getMessage(),Toast.LENGTH_LONG).show(); }
+                });
+            } catch(Exception e) {
+                runOnUiThread(() -> Toast.makeText(this,"Не удалось сохранить лог: "+e.getMessage(),Toast.LENGTH_LONG).show());
+            }
+        },"udpfs-share-log").start();
+    }
     void showLogs(){TextView content=text(latestLog,15);content.setTextIsSelectable(true);content.setTextColor(Color.rgb(30,55,75));content.setShadowLayer(0,0,0,Color.TRANSPARENT);content.setPadding(dp(18),dp(14),dp(18),dp(14));ScrollView scroll=new ScrollView(this);scroll.addView(content,new ScrollView.LayoutParams(-1,-2));new AlertDialog.Builder(this).setTitle("Логи udpfsd").setView(scroll).setPositiveButton("Закрыть",null).show();}
 }

@@ -44,6 +44,8 @@ public class ServerService extends Service {
 
     @Override public void onCreate() {
         super.onCreate();
+        LogStore.begin(this);
+        LogStore.append("Session: " + new java.util.Date() + "\nDevice: " + Build.MANUFACTURER + " " + Build.MODEL + " Android " + Build.VERSION.RELEASE + " API " + Build.VERSION.SDK_INT);
         commands = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "udpfs-control");
             t.setDaemon(true);
@@ -292,10 +294,22 @@ public class ServerService extends Service {
 
     private void readProcessLog(java.lang.Process p, long gen) {
         StringBuilder tail = new StringBuilder();
+        String previousPower = "";
+        long lastPowerCheck = 0;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 if (!isCurrent(p, gen)) break;
+                long now = SystemClock.elapsedRealtime();
+                if (now - lastPowerCheck >= 1000) {
+                    String power = powerStatus();
+                    if (!power.equals(previousPower)) {
+                        LogStore.append(new java.util.Date() + " Power: " + power);
+                        previousPower = power;
+                    }
+                    lastPowerCheck = now;
+                }
+                LogStore.append(line);
                 tail.append(line).append('\n');
                 if (tail.length() > 5000) tail.delete(0, tail.length() - 5000);
                 sendPeerActivity(line);
@@ -382,6 +396,12 @@ public class ServerService extends Service {
     }
 
     private void sendStatus(String text) {
+        if (!text.contains("--- log ---")) {
+            LogStore.append(new java.util.Date() + " " + text);
+            LogStore.flush();
+        }
+        String logError = LogStore.error();
+        if (logError != null) text += "\nОшибка записи лога: " + logError;
         Intent i = new Intent(ACTION_STATUS);
         i.setPackage(getPackageName());
         i.putExtra("text", text);
@@ -414,6 +434,7 @@ public class ServerService extends Service {
         } else {
             releaseRuntimeLocks();
         }
+        LogStore.flush();
         super.onDestroy();
     }
 
