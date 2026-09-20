@@ -5,8 +5,8 @@ android { namespace 'com.greshserg.ps2udpfs'; compileSdk 35
         applicationId 'com.greshserg.ps2udpfs'
         minSdk 26
         targetSdk 35
-        versionCode 4
-        versionName '1.0.3'
+        versionCode 5
+        versionName '1.0.4'
         ndk { abiFilters 'arm64-v8a' }
     }
     // udpfsd is an executable packaged in the native directory, not a JNI library.

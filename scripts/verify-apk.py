@@ -23,9 +23,9 @@ build_tools = next(p for p in versions if (p / 'apksigner').exists() and (p / 'a
 subprocess.run([str(build_tools / 'apksigner'), 'verify', '--verbose', str(apk)], check=True)
 badging = subprocess.check_output([str(build_tools / 'aapt'), 'dump', 'badging', str(apk)], text=True)
 assert "name='com.greshserg.ps2udpfs'" in badging, 'Wrong application ID'
-assert "versionCode='4'" in badging and "versionName='1.0.3'" in badging, 'Wrong application version'
+assert "versionCode='5'" in badging and "versionName='1.0.4'" in badging, 'Wrong application version'
 assert "launchable-activity: name='com.greshserg.ps2udpfs.MainActivity'" in badging, 'Launcher activity missing'
 xml = subprocess.check_output([str(build_tools / 'aapt'), 'dump', 'xmltree', str(apk), 'AndroidManifest.xml'], text=True)
 assert any('android:extractNativeLibs' in line and '0xffffffff' in line for line in xml.splitlines()), 'Native executable must be extracted at install time'
-print('Verified signed APK 1.0.3 (4), launcher, native extraction and exact rebuilt ARM64 PIE bytes.')
+print('Verified signed APK 1.0.4 (5), launcher, native extraction and exact rebuilt ARM64 PIE bytes.')
 print('udpfsd SHA-256:', hashlib.sha256(packaged).hexdigest())

@@ -10,6 +10,10 @@ Android-приложение, превращающее телефон или п�
 
 # Русский
 
+## Исправление зависания в 1.0.4
+
+В закреплённый `udpfsd` добавлен патч `android-nack1`: сервер находит запрошенный пакет в середине буфера повторной передачи и продвигает окно по допустимому NACK, если подтверждение предыдущего окна потерялось. Проверки покрывают потерю пакета, потерю ACK, переход номера пакета через 4095 → 0 и устаревшие/недопустимые NACK. В CI те же тесты сначала воспроизводят ошибку на исходном сервере, затем проходят после патча с Go race detector. Проверка на физической PS2 остаётся необходимой.
+
 ## Возможности
 
 - Запуск UDPFS-сервера прямо на Android без root.
@@ -74,9 +78,9 @@ APK автоматически собирается через GitHub Actions. W
 - собирает debug APK;
 - публикует APK как GitHub Actions artifact.
 
-Версия 1.0.3 собирается с нуля: Go и Gradle используют отдельные пустые каталоги кэша для каждого запуска. Gradle выполняет `clean assembleDebug --no-build-cache --rerun-tasks --refresh-dependencies`. После сборки проверяются подпись APK, версия, launcher activity и точное совпадение ARM64 PIE-бинарника внутри APK с только что собранным сервером.
+Версия 1.0.4 собирается с нуля: Go и Gradle используют отдельные пустые каталоги кэша для каждого запуска. Gradle выполняет `clean assembleDebug --no-build-cache --rerun-tasks --refresh-dependencies`. После сборки проверяются подпись APK, версия, launcher activity и точное совпадение ARM64 PIE-бинарника внутри APK с только что собранным сервером.
 
-Артефакт `PS2-UDPFS-1.0.3-arm64-clean` содержит APK, SHA-256 и `build-info.json` с коммитами приложения и сервера. Это чистая пересборка; исправление сетевого подключения PS2 требует отдельной проверки на устройстве.
+Артефакт `PS2-UDPFS-1.0.4-arm64-clean` содержит APK, SHA-256 и `build-info.json` с коммитами приложения и сервера. Патч и его SHA-256 также указаны в `build-info.json`. Работа с PS2 требует проверки на устройстве.
 
 Для локальной сборки нужны JDK 17, Android SDK и Gradle. Workflow сначала создаёт wrapper Gradle 8.9; wrapper не хранится в репозитории. Сервер необходимо собрать и поместить в `app/src/main/jniLibs/arm64-v8a/libudpfsd.so` до сборки Android-части, как показано в workflow.
 
@@ -95,6 +99,10 @@ APK автоматически собирается через GitHub Actions. W
 ## Overview
 
 PS2 UDPFS Server for Android turns an Android phone or tablet into a UDPFS server for PlayStation 2. It uses [`udpfsd`](https://github.com/pcm720/udpfsd) and is primarily intended for loading games over a local network with compatible PS2 clients such as Neutrino/NHDDL.
+
+## Stall recovery fix in 1.0.4
+
+The pinned `udpfsd` receives the `android-nack1` patch: find a requested packet inside the retransmit buffer, and advance the window on a valid NACK when a window ACK was lost. Regression tests cover packet loss, ACK loss, 12-bit sequence wrap and stale/invalid NACKs. CI first reproduces the failures on the original transport, then runs the patched tests with the Go race detector. Physical PS2 validation is still required.
 
 ## Features
 
@@ -160,9 +168,9 @@ The APK is built automatically with GitHub Actions. The workflow:
 - builds the debug APK;
 - uploads the APK as a GitHub Actions artifact.
 
-Version 1.0.3 uses fresh Go and Gradle cache directories for every run and executes `clean assembleDebug --no-build-cache --rerun-tasks --refresh-dependencies`. Verification checks the APK signature, version, launcher activity and byte-for-byte inclusion of the rebuilt ARM64 PIE executable.
+Version 1.0.4 uses fresh Go and Gradle cache directories for every run and executes `clean assembleDebug --no-build-cache --rerun-tasks --refresh-dependencies`. Verification checks the APK signature, version, launcher activity and byte-for-byte inclusion of the rebuilt ARM64 PIE executable.
 
-The `PS2-UDPFS-1.0.3-arm64-clean` artifact contains the APK, SHA-256 and `build-info.json` recording both source commits. A clean rebuild does not by itself verify or fix PS2 network connectivity.
+The `PS2-UDPFS-1.0.4-arm64-clean` artifact contains the APK, SHA-256 and `build-info.json` recording both source commits. The patch identifier and SHA-256 are also recorded. PS2 connectivity still requires an on-device test.
 
 Local builds require JDK 17, Android SDK and Gradle. The workflow generates the Gradle 8.9 wrapper; it is not checked into this repository. Build the server into `app/src/main/jniLibs/arm64-v8a/libudpfsd.so` before building the Android app, following the workflow.
 

@@ -28,7 +28,7 @@ jobs:
         with:
           go-version: '1.25'
           cache: false
-      - name: Build pinned udpfsd for Android ARM64 native dir
+      - name: Fetch pinned udpfsd source
         run: |
           rm -rf /tmp/udpfsd
           git init /tmp/udpfsd
@@ -39,8 +39,34 @@ jobs:
           cd /tmp/udpfsd
           test "$(git rev-parse HEAD)" = "$UDPFSD_COMMIT"
           test -z "$(git status --porcelain)"
+      - name: Reproduce lost-packet stalls on unpatched udpfsd
+        run: |
+          cp patches/udpfsd/nack_regression_test.go /tmp/udpfsd/udprdma/android_nack_test.go
+          cd /tmp/udpfsd
+          gofmt -w udprdma/android_nack_test.go
+          if go test -count=1 -run 'TestAndroid(RetransmitWindow|NackProgress)' ./udprdma > "$RUNNER_TEMP/udpfs-baseline.log" 2>&1; then
+            cat "$RUNNER_TEMP/udpfs-baseline.log"
+            echo 'Expected the pinned upstream to reproduce the NACK regression'
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/udpfs-baseline.log"
+          python3 - <<'PY'
+          import os, pathlib
+          log = pathlib.Path(os.environ['RUNNER_TEMP'], 'udpfs-baseline.log').read_text()
+          assert '--- FAIL: TestAndroidRetransmitWindow' in log, 'Baseline failed for an unrelated reason'
+          assert '--- FAIL: TestAndroidNackProgress' in log, 'Lost ACK regression was not reproduced'
+          PY
+      - name: Apply NACK recovery patch and run regression tests with race detector
+        run: |
+          git -C /tmp/udpfsd apply --check "$GITHUB_WORKSPACE/patches/udpfsd/0001-fix-nack-recovery.patch"
+          git -C /tmp/udpfsd apply "$GITHUB_WORKSPACE/patches/udpfsd/0001-fix-nack-recovery.patch"
+          cd /tmp/udpfsd
+          go test -race -count=1 -v ./udprdma
+      - name: Build patched udpfsd for Android ARM64 native dir
+        run: |
+          cd /tmp/udpfsd
           SHORT_SHA="${UDPFSD_COMMIT:0:12}"
-          GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -a -trimpath -buildmode=pie -ldflags "-X main.Version=$SHORT_SHA" -o "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so" ./cmd/udpfsd
+          GOOS=android GOARCH=arm64 CGO_ENABLED=0 go build -a -trimpath -buildmode=pie -ldflags "-X main.Version=$SHORT_SHA-android-nack1" -o "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so" ./cmd/udpfsd
           chmod +x "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so"
           file "$GITHUB_WORKSPACE/app/src/main/jniLibs/arm64-v8a/libudpfsd.so"
       - name: Make Gradle wrapper
@@ -52,14 +78,16 @@ jobs:
       - name: Prepare named APK and build information
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/PS2-UDPFS-1.0.3-arm64.apk
-          sha256sum dist/PS2-UDPFS-1.0.3-arm64.apk > dist/SHA256SUMS.txt
+          cp app/build/outputs/apk/debug/app-debug.apk dist/PS2-UDPFS-1.0.4-arm64.apk
+          sha256sum dist/PS2-UDPFS-1.0.4-arm64.apk > dist/SHA256SUMS.txt
           python3 - <<'PY'
-          import json, os, pathlib
+          import hashlib, json, os, pathlib
           pathlib.Path('dist/build-info.json').write_text(json.dumps({
-              'app_version': '1.0.3',
+              'app_version': '1.0.4',
               'app_commit': os.environ['GITHUB_SHA'],
               'udpfsd_commit': os.environ['UDPFSD_COMMIT'],
+              'udpfsd_patch': 'android-nack1',
+              'udpfsd_patch_sha256': hashlib.sha256(pathlib.Path('patches/udpfsd/0001-fix-nack-recovery.patch').read_bytes()).hexdigest(),
               'run_id': os.environ['GITHUB_RUN_ID'],
               'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
               'clean_build': True,
@@ -69,6 +97,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v5
         with:
-          name: PS2-UDPFS-1.0.3-arm64-clean
+          name: PS2-UDPFS-1.0.4-arm64-clean
           path: dist/
           if-no-files-found: error

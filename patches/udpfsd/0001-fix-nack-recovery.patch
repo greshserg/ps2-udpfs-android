@@ -1,0 +1,71 @@
+diff --git a/udprdma/acks.go b/udprdma/acks.go
+index aa986f7..a04c1cf 100644
+--- a/udprdma/acks.go
++++ b/udprdma/acks.go
+@@ -38,11 +38,27 @@ func (s *Session) onPeerAck(seq uint16) {
+ // Handles peer NACK.
+ // Assumes the lock is acquired
+ func (s *Session) onPeerNack(seq uint16) {
+-	// Go-Back-N from indicated seq; do not move txSeqNrAcked backwards.
++	if s.txReadIndex == s.txWriteIndex {
++		return
++	}
++	// NACK names the next expected packet, so it also acknowledges all
++	// packets before it. Accept only forward progress in the current window,
++	// including txSeqNr when the peer received a whole window but its ACK
++	// was lost. Stale/future NACKs must not discard data or reset retries.
++	first := s.txBuffer[s.txReadIndex].seq
++	if !seqBetween(first, seq, s.txSeqNr) {
++		return
++	}
++	if seq != first {
++		s.onAck((seq - 1) & 0xFFF)
++	}
+ 	s.retransmitAttempts = 0
+-	sent := s.retransmitFrom(seq)
+-	if sent == 0 {
++	if sent := s.retransmitFrom(seq); sent == 0 && seq != s.txSeqNr {
+ 		log.Printf("[%s]: NACK retransmit from %d sent 0 packets", s.peerAddr, seq)
+ 	}
+-	s.updateAckTimer()
++	if s.transfer.data != nil {
++		s.handleTransfer()
++	} else {
++		s.updateAckTimer()
++	}
+ }
+diff --git a/udprdma/session_tx.go b/udprdma/session_tx.go
+index 68d5d65..a9f3212 100644
+--- a/udprdma/session_tx.go
++++ b/udprdma/session_tx.go
+@@ -172,19 +172,20 @@ func (s *Session) pruneAcked(seqNrAck uint16) {
+ // Assumes the lock is acquired. Returns the number of packets sent
+ func (s *Session) retransmitFrom(fromSeq uint16) int {
+ 	batch := make([][]byte, 0, SendWindow)
++	found := false
+ 	for i := s.txReadIndex; i != s.txWriteIndex; i = (i + 1) % len(s.txBuffer) {
+ 		p := s.txBuffer[i]
+-		diff := (p.seq - fromSeq) & 0xFFF
+-
+-		if diff >= 2048 {
+-			break
+-		}
+-
+-		if p.seq != (fromSeq-1)&0xFFF {
+-			s.packetsTx++
+-			s.retransmits++
+-			batch = append(batch, p.data)
++		// A NACK may point into the middle of the retained window. Skip
++		// earlier packets; stopping there would send nothing indefinitely.
++		if !found {
++			if p.seq != fromSeq {
++				continue
++			}
++			found = true
+ 		}
++		s.packetsTx++
++		s.retransmits++
++		batch = append(batch, p.data)
+ 	}
+ 	if len(batch) > 0 {
+ 		s.writeBatch(s.peerAddr, batch)
