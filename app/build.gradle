@@ -1,7 +1,7 @@
 plugins { id 'com.android.application' }
 
 android { namespace 'com.greshserg.ps2udpfs'; compileSdk 35
-    defaultConfig { applicationId 'com.greshserg.ps2udpfs'; minSdk 26; targetSdk 35; versionCode 2; versionName '1.0.1' }
+    defaultConfig { applicationId 'com.greshserg.ps2udpfs'; minSdk 26; targetSdk 35; versionCode 3; versionName '1.0.2' }
 }
 
 dependencies { implementation "androidx.core:core:1.15.0" }

@@ -19,7 +19,8 @@ Android-приложение, превращающее телефон или п�
 - Автоматическое отображение IP-адреса телефона в локальной сети.
 - Мониторинг активности PS2 и отображение IP подключившегося клиента.
 - Просмотр диагностического лога `udpfsd` прямо в приложении.
-- Foreground Service и WakeLock для более стабильной работы при выключенном экране.
+- Foreground Service, WakeLock и Wi-Fi HIGH_PERF lock для стабильной работы при выключенном экране.
+- Кнопка запроса исключения из оптимизации батареи Android.
 - Проверка обновлений через GitHub.
 - Нативный ARM64 `udpfsd` собирается автоматически из актуального исходного кода upstream при сборке APK.
 
@@ -100,7 +101,8 @@ PS2 UDPFS Server for Android turns an Android phone or tablet into a UDPFS serve
 - Displays the Android device's local network IP address.
 - Monitors PS2/client activity and displays the active peer IP.
 - Built-in `udpfsd` diagnostic log.
-- Foreground Service and WakeLock for improved reliability while the screen is off.
+- Foreground Service, WakeLock and a Wi-Fi HIGH_PERF lock for reliability while the screen is off.
+- A button to request an Android battery-optimization exemption.
 - GitHub-based update checking.
 - The native ARM64 `udpfsd` component is built automatically from current upstream source when the APK is built.
 

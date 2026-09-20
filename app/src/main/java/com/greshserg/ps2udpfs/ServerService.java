@@ -39,6 +39,7 @@ public class ServerService extends Service {
     private PowerManager.WakeLock wakeLock;
     private WifiManager.MulticastLock multicastLock;
     private WifiManager.WifiLock wifiLock;
+    private String wifiLockMode = "HIGH_PERF";
 
     private static final Pattern PEER = Pattern.compile("\\[((?:\\d{1,3}\\.){3}\\d{1,3})(?::\\d+)?\\]");
 
@@ -64,12 +65,12 @@ public class ServerService extends Service {
 
         WifiManager wifi = (WifiManager)getApplicationContext().getSystemService(WIFI_SERVICE);
         if (wifi != null) {
-            // API 34 replaces HIGH_PERF with LOW_LATENCY; the latter requires
-            // a visible app and screen on. isHeld() does not prove radio activation.
-            int mode = Build.VERSION.SDK_INT >= 34
-                    ? WifiManager.WIFI_MODE_FULL_LOW_LATENCY
-                    : WifiManager.WIFI_MODE_FULL_HIGH_PERF;
-            wifiLock = wifi.createWifiLock(mode, "PS2Udpfs:Streaming");
+            // LOW_LATENCY is only active while the screen is on and the app is
+            // foreground. UDPFS must keep receiving ACK/NACK packets after the
+            // phone is locked, so deliberately use HIGH_PERF on every API level.
+            // The constant is deprecated on API 34, but remains the only public
+            // Wi-Fi lock whose activation is not tied to screen/foreground state.
+            wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "PS2Udpfs:Streaming");
             wifiLock.setReferenceCounted(false);
             multicastLock = wifi.createMulticastLock("PS2Udpfs:Discovery");
             multicastLock.setReferenceCounted(false);
@@ -171,7 +172,7 @@ public class ServerService extends Service {
         PowerManager pm = (PowerManager)getSystemService(POWER_SERVICE);
         String info = "\nWakeLock: " + (wakeLock != null && wakeLock.isHeld())
                 + "\nWi-Fi Lock held: " + (wifiLock != null && wifiLock.isHeld())
-                + " (" + (Build.VERSION.SDK_INT >= 34 ? "LOW_LATENCY" : "HIGH_PERF") + ")";
+                + " (" + wifiLockMode + ")";
         if (pm != null) {
             info += "\nЭкран включён: " + pm.isInteractive()
                     + "\nЭнергосбережение: " + pm.isPowerSaveMode();
@@ -181,10 +182,7 @@ public class ServerService extends Service {
                         + pm.isIgnoringBatteryOptimizations(getPackageName());
             }
         }
-        if (Build.VERSION.SDK_INT >= 34) {
-            info += "\nWi-Fi LOW_LATENCY: нужны включённый экран и открытое приложение;"
-                    + " held не подтверждает активность режима.";
-        }
+        info += "\nWi-Fi HIGH_PERF: рассчитан на работу с выключенным экраном.";
         return info;
     }
 
