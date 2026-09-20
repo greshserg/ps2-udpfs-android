@@ -15,7 +15,7 @@ Android-приложение, превращающее телефон или п�
 - Запуск UDPFS-сервера прямо на Android без root.
 - Выбор папки с играми через интерфейс приложения.
 - Работа с ISO, CSO и ZSO.
-- Сервер по умолчанию работает в режиме **только чтение**.
+- Сервер работает в режиме чтения и записи, чтобы Neutrino/NHDDL мог создавать кэш и сохранять служебные файлы.
 - Автоматическое отображение IP-адреса телефона в локальной сети.
 - Мониторинг активности PS2 и отображение IP подключившегося клиента.
 - Просмотр диагностического лога `udpfsd` прямо в приложении.
@@ -96,7 +96,7 @@ PS2 UDPFS Server for Android turns an Android phone or tablet into a UDPFS serve
 - Run a UDPFS server directly on Android without root.
 - Select the games directory from the app UI.
 - ISO, CSO and ZSO support.
-- **Read-only** server mode by default.
+- Read/write server mode so Neutrino/NHDDL can create cache and service files.
 - Displays the Android device's local network IP address.
 - Monitors PS2/client activity and displays the active peer IP.
 - Built-in `udpfsd` diagnostic log.
