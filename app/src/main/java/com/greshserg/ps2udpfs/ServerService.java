@@ -249,7 +249,6 @@ public class ServerService extends Service {
             ProcessBuilder pb = new ProcessBuilder(
                     exe.getAbsolutePath(),
                     "-fsroot", root,
-                    "-ro",
                     "-verbose",
                     "-bind", wifiIp
             );
