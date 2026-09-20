@@ -22,7 +22,7 @@ Android-приложение, превращающее телефон или п�
 - Foreground Service, WakeLock и Wi-Fi HIGH_PERF lock для стабильной работы при выключенном экране.
 - Кнопка запроса исключения из оптимизации батареи Android.
 - Проверка обновлений через GitHub.
-- Нативный ARM64 `udpfsd` собирается автоматически из актуального исходного кода upstream при сборке APK.
+- Нативный ARM64 `udpfsd` собирается автоматически из закреплённого коммита upstream при сборке APK.
 
 ## Требования
 
@@ -69,12 +69,16 @@ CHD сейчас не поддерживается, поскольку Android-�
 APK автоматически собирается через GitHub Actions. Workflow:
 
 - устанавливает JDK 17 и Go 1.25;
-- загружает актуальный [`pcm720/udpfsd`](https://github.com/pcm720/udpfsd);
+- загружает закреплённый коммит [`pcm720/udpfsd`](https://github.com/pcm720/udpfsd) из `UDPFSD_COMMIT`;
 - собирает ARM64 Android PIE-бинарник как нативную библиотеку `libudpfsd.so`;
 - собирает debug APK;
 - публикует APK как GitHub Actions artifact.
 
-Локальная сборка Android-части выполняется стандартным Gradle wrapper проекта.
+Версия 1.0.3 собирается с нуля: Go и Gradle используют отдельные пустые каталоги кэша для каждого запуска. Gradle выполняет `clean assembleDebug --no-build-cache --rerun-tasks --refresh-dependencies`. После сборки проверяются подпись APK, версия, launcher activity и точное совпадение ARM64 PIE-бинарника внутри APK с только что собранным сервером.
+
+Артефакт `PS2-UDPFS-1.0.3-arm64-clean` содержит APK, SHA-256 и `build-info.json` с коммитами приложения и сервера. Это чистая пересборка; исправление сетевого подключения PS2 требует отдельной проверки на устройстве.
+
+Для локальной сборки нужны JDK 17, Android SDK и Gradle. Workflow сначала создаёт wrapper Gradle 8.9; wrapper не хранится в репозитории. Сервер необходимо собрать и поместить в `app/src/main/jniLibs/arm64-v8a/libudpfsd.so` до сборки Android-части, как показано в workflow.
 
 ## Важные замечания
 
@@ -104,7 +108,7 @@ PS2 UDPFS Server for Android turns an Android phone or tablet into a UDPFS serve
 - Foreground Service, WakeLock and a Wi-Fi HIGH_PERF lock for reliability while the screen is off.
 - A button to request an Android battery-optimization exemption.
 - GitHub-based update checking.
-- The native ARM64 `udpfsd` component is built automatically from current upstream source when the APK is built.
+- The native ARM64 `udpfsd` component is built automatically from a pinned upstream commit when the APK is built.
 
 ## Requirements
 
@@ -151,12 +155,16 @@ The app uses network access, WakeLock, a Foreground Service and `MANAGE_EXTERNAL
 The APK is built automatically with GitHub Actions. The workflow:
 
 - sets up JDK 17 and Go 1.25;
-- fetches the latest [`pcm720/udpfsd`](https://github.com/pcm720/udpfsd) source;
+- fetches the pinned [`pcm720/udpfsd`](https://github.com/pcm720/udpfsd) commit from `UDPFSD_COMMIT`;
 - builds the ARM64 Android PIE executable as the native `libudpfsd.so` library;
 - builds the debug APK;
 - uploads the APK as a GitHub Actions artifact.
 
-The Android project can also be built locally using the included Gradle wrapper.
+Version 1.0.3 uses fresh Go and Gradle cache directories for every run and executes `clean assembleDebug --no-build-cache --rerun-tasks --refresh-dependencies`. Verification checks the APK signature, version, launcher activity and byte-for-byte inclusion of the rebuilt ARM64 PIE executable.
+
+The `PS2-UDPFS-1.0.3-arm64-clean` artifact contains the APK, SHA-256 and `build-info.json` recording both source commits. A clean rebuild does not by itself verify or fix PS2 network connectivity.
+
+Local builds require JDK 17, Android SDK and Gradle. The workflow generates the Gradle 8.9 wrapper; it is not checked into this repository. Build the server into `app/src/main/jniLibs/arm64-v8a/libudpfsd.so` before building the Android app, following the workflow.
 
 ## Notes
 
