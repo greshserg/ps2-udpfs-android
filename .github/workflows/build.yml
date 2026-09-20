@@ -11,12 +11,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      GRADLE_USER_HOME: ${{ runner.temp }}/ps2-gradle-${{ github.run_id }}-${{ github.run_attempt }}
-      GOCACHE: ${{ runner.temp }}/ps2-go-build-${{ github.run_id }}-${{ github.run_attempt }}
-      GOMODCACHE: ${{ runner.temp }}/ps2-go-mod-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v5
+      - name: Use empty build and dependency caches
+        run: |
+          printf 'GRADLE_USER_HOME=%s\n' "$RUNNER_TEMP/ps2-gradle-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          printf 'GOCACHE=%s\n' "$RUNNER_TEMP/ps2-go-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          printf 'GOMODCACHE=%s\n' "$RUNNER_TEMP/ps2-go-mod-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
       - name: Set up JDK
         uses: actions/setup-java@v5
         with:
